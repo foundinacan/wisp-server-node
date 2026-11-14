@@ -4,7 +4,7 @@
     "type": "commonjs",
     "description": "",
     "scripts": {
-        "start": "node dist/createServer.js",
+        "start": "npx --yes --package=@mercuryworkshop/wisp-js@0.5.3 wisp-js-server --host 0.0.0.0 --port ${PORT:-3000} --logging INFO",
         "build": "tsc",
         "dev": "tsc --watch",
         "pretty": "npx prettier -w *",
