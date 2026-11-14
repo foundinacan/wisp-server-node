@@ -1,9 +1,16 @@
-import wisp from "./ConnectionHandler.js";
+// @ts-ignore - wisp-js ships runtime entrypoints without TypeScript declarations.
+import { server as wisp, logging } from "@mercuryworkshop/wisp-js/server";
 import http from "node:http";
-import { LOG_LEVEL } from "./Types.js";
 import { Socket } from "node:net";
 
 const port = Number(process.env.PORT) || 3000;
+
+// Keep the proxy limited to normal web traffic and block private-network access.
+wisp.options.port_whitelist = [80, 443];
+wisp.options.allow_private_ips = false;
+wisp.options.allow_loopback_ips = false;
+wisp.options.allow_direct_ip = false;
+logging.set_level(logging.DEBUG);
 
 const httpServer = http.createServer((req, res) => {
     const pathname = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`).pathname;
@@ -18,11 +25,9 @@ const httpServer = http.createServer((req, res) => {
     res.end("Not found");
 });
 
-httpServer.on("upgrade", (req, socket, head) => {
+httpServer.on("upgrade", async (req, socket, head) => {
     const pathname = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`).pathname;
 
-    // This service is dedicated to Wisp. The trailing slash is required by the
-    // wisp-server-node router to distinguish Wisp from legacy wsproxy requests.
     if (pathname !== "/wisp/") {
         socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
         socket.destroy();
@@ -30,15 +35,14 @@ httpServer.on("upgrade", (req, socket, head) => {
         return;
     }
 
-    console.log(`[wisp] WebSocket upgrade received from ${req.headers.origin || "unknown origin"}`);
+    console.log(`[wisp] WebSocket upgrade from ${req.headers.origin || "unknown origin"}`);
 
-    wisp.routeRequest(req, socket as Socket, head, {
-        logLevel: LOG_LEVEL.INFO,
-        pingInterval: 30
-    }).catch((error: unknown) => {
-        console.error("[wisp] Failed to handle WebSocket upgrade:", error);
+    try {
+        await wisp.routeRequest(req, socket as Socket, head);
+    } catch (error) {
+        console.error("[wisp] WebSocket handler failed:", error);
         socket.destroy();
-    });
+    }
 });
 
 httpServer.on("error", (error) => {
@@ -47,5 +51,5 @@ httpServer.on("error", (error) => {
 });
 
 httpServer.listen(port, "0.0.0.0", () => {
-    console.log(`[wisp] HTTP server listening on 0.0.0.0:${port}`);
+    console.log(`[wisp] Listening on 0.0.0.0:${port}`);
 });
